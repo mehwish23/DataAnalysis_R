@@ -1,0 +1,212 @@
+---
+title: "Housing Data"
+output: html_notebook
+---
+The project aims to leverage data-driven insights to better understand housing market trends, predict property prices, and provide valuable information for potential home buyers and real estate investors.By harnessing the power of data analytics using R, we intend to see how the housing landscape
+has changed over the last five years. Along the way, we also want to provide actionable
+information by answering the below questions:
+• Which Iowa counties have the highest and lowest property values?
+• How have property values changed over time?
+• How do economic indicators (e.g., interest rates, GDP) influence housing         prices?
+• How well does median income predict median housing value and vice versa?
+• Does the racial makeup of a county affect the median housing value in that    area?
+
+```{r}
+# Load necessary libraries
+library(readr)
+library(tidyr)
+library(ggplot2)
+library(scales)
+library(choroplethrMaps)
+suppressPackageStartupMessages(library(choroplethr))
+
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(scales))
+
+
+# Read the csv file for Income and Housing Unit
+housing_df <- read_csv("MedianCountyValue.csv", show_col_types = FALSE)
+
+income_df <- read_csv("IncomeHousing.csv", show_col_types = FALSE)
+
+```
+# Cleaning the data
+
+```{r}
+
+# Checking if there are missing values in the data frame
+
+# Show records with missing values
+records_with_missing_homeval <- housing_df[!complete.cases(housing_df), ]
+records_with_missing_values <- income_df[!complete.cases(income_df), ]
+
+# Filter out rows with missing values 
+income_df <- income_df[complete.cases(income_df$`Measure Values`), ]
+
+#Rename income dataframe county column name 
+income_df <- income_df %>%
+  rename(`Geographic name` = `Geographic Name`)
+
+# Remove commas from all specified columns in the data frame
+housing_df <- housing_df %>%
+  mutate_at(vars(`Estimate2017-2021`, `Margin of Error2017-2021`,
+                 `Estimate2012-2016`, `Margin of Error2012-2016`,
+                 `Estimate2007-2011`, `Margin of Error2007-2011`), 
+                 list(~ gsub(",", "", .)))
+
+
+# Remove $ sign from specified columns in the data frame
+housing_df <- housing_df %>%
+  mutate_at(vars(`Estimate2017-2021`, `Margin of Error2017-2021`,
+                 `Estimate2012-2016`, `Margin of Error2012-2016`,
+                 `Estimate2007-2011`, `Margin of Error2007-2011`), 
+                 list(~ gsub("\\$", "", .)))
+
+#Convert to numeric column
+housing_df <- housing_df %>%
+    mutate(`Estimate2017-2021`= as.numeric(`Estimate2017-2021`),
+           `Margin of Error2017-2021`= as.numeric(`Margin of Error2017-2021`),
+           `Estimate2012-2016`= as.numeric(`Estimate2012-2016`),
+           `Margin of Error2012-2016`= as.numeric(`Margin of Error2012-2016`),
+           `Estimate2007-2011`= as.numeric(`Estimate2007-2011`),
+           `Margin of Error2007-2011`= as.numeric(`Margin of Error2007-2011`))
+
+```
+
+# Q1) Which Iowa counties have the highest and lowest property values? 
+
+```{r}
+#Highest Property Values
+highest_property_counties <- housing_df %>%
+  filter(!is.na(`Estimate2017-2021`)) %>%
+  arrange(desc(`Estimate2017-2021`)) %>%
+  head(10)
+
+# Lowest Property Values
+lowest_property_counties <- housing_df %>%
+  filter(!is.na(`Estimate2017-2021`)) %>%
+  arrange(`Estimate2017-2021`)%>%
+  head(10)  # Get the top 10 counties with lowest property values
+```
+
+#Visualization
+```{r}
+# Highest Property Values: Bar Plot
+
+p <- qplot(data = highest_property_counties, x = reorder(`Geographic name`, -`Estimate2017-2021`), 
+      y = `Estimate2017-2021`, geom = "col", fill = I("skyblue"),
+      main = "Top 10 Counties with Highest Property Values",
+      xlab = "County", ylab = "Property Value") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_y_continuous(labels = scales::dollar_format(prefix = "$"))
+
+p
+
+# Set the height and width for the saved graph
+ggsave("output_plot_q1a.png", p, width = 10, height = 6, units = "in")
+
+# Lowest Property Values: Bar Plot with y-axis labels showing numbers with $ sign
+q <- qplot(data = lowest_property_counties, x = reorder(`Geographic name`, `Estimate2017-2021`), 
+            y = `Estimate2017-2021`, geom = "col", fill = I("salmon"),
+            main = "Top 10 Counties with Lowest Property Values",
+            xlab = "County", ylab = "Property Value") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    scale_y_continuous(labels = scales::dollar_format(prefix = "$"))
+q
+
+# Set the height and width for the saved graph
+ggsave("output_plot_q1b.png", q, width = 10, height = 6, units = "in")
+```
+# Q2) How have property values changed over time?
+
+```{r}
+# Function to Plot Property Value Trend for a Specific County using qplot
+plot_property_value <- function(data, county_name) {
+  county_data <- data %>%
+    filter(`Geographic name` == county_name) %>%
+    gather(key = "year_range", value = "property_value", 
+           `Estimate2017-2021`, `Estimate2012-2016`, `Estimate2007-2011`)
+  
+c <-  qplot(data = county_data, x = as.factor(year_range), y = property_value, 
+        geom = "line", group = 1, 
+        color = I("green"),  # color of the line
+        size = I(2),         # width of line
+        main = paste("Property Value Trend in", county_name),
+        xlab = "Year Range", ylab = "Property Value") +
+    scale_y_continuous(labels = scales::dollar_format(prefix = "$")) 
+
+# Set the height and width for the saved graph
+ggsave("output_plot_q2.png", c, width = 10, height = 6, units = "in")
+  
+}
+
+# Replace "Your County Name" with the actual county name you want to plot
+selected_county <- "Dallas County"  #Can give any county name
+
+# Plot Property Value Trend for the Selected County
+property_value_plot <- plot_property_value(housing_df, selected_county)
+print(property_value_plot)
+
+
+
+
+```
+
+#Q3) How do economic indicators (e.g., interest rates, GDP) influence housing        prices?
+```{r}
+
+
+```
+
+#Q4)How well does median income predict median housing value and vice versa?
+
+```{r}
+
+# Merge based on 'Geographic Name' column
+merged_data <- merge(housing_df, income_df, by.x = "Geographic name", by.y = "Geographic name")
+
+# Filter out rows where Income Level is Per Capita Income
+filtered_data_sc <- merged_data[merged_data$`Income Level` != "Per Capita Income", ]
+
+# Visualization: Scatter plot with facets based on Income Level
+plot <- qplot(data = filtered_data_sc, x = `Measure Values`, y = `Estimate2017-2021`, geom = "point", color = `Income Level`, facets = . ~ `Income Level`) +
+  labs(title = "Median Income vs. Median Housing Value", x = "Median Income", y = "Housing Value") +
+  scale_y_continuous(labels = scales::dollar_format(prefix = "$")) +
+  scale_x_continuous(labels = scales::dollar_format(prefix = "$")) +
+  theme(axis.text = element_text(size = 6)) +
+  theme(axis.text = element_text(color = "black"))
+
+# Set the height and width for the saved graph
+ggsave("output_plot_q4_facets.png", plot, width = 10, height = 6, dpi = 600, units = "in")
+
+```
+
+#Q5)Does the racial makeup of a county affect the median housing value in that    area?
+```{r}
+# Filter out rows where Race Origin is "Total"
+filtered_data <- merged_data[merged_data$`Race Origin` != "Total", ]
+
+# Create a horizontal violin plot using qplot
+
+plot <- qplot(data = filtered_data, x = `Estimate2017-2021`, y = `Race Origin`, fill = `Race Origin`,
+              geom = "violin", main = "Effect of Racial Makeup on Median Housing Value for 2017 - 2021",
+              ylab = "Race", xlab = "Median Housing Value") +
+        scale_fill_discrete(name = "Race") +
+        scale_x_continuous(labels = scales::dollar_format(prefix = "$")) +  # Format X-axis as currency
+        theme_minimal() +
+        theme(axis.text.y = element_text(angle = 0, hjust = 1, size = 8),
+              axis.text.x = element_text(angle = 0, hjust = 1, size = 8),  # Adjust y-axis 
+              axis.title.x = element_text(color = "white"),  # Set x-axis title color to black
+              axis.title.y = element_text(color = "white"),  # Set y-axis title color to black
+              axis.text = element_text(color = "white"),     # Set axis text color to black
+              legend.text = element_text(color = "white"),
+              legend.title = element_text(color = "white"),
+              panel.background = element_rect(fill = "lightblue"),  # Set background color
+              plot.title = element_text(color = "white", size = 14, face = "bold"))  # Set title color and size) 
+
+# Set the height and width for the saved graph
+ggsave("output_plot_q5.png", plot, width = 10, height = 6, dpi = 600, units = "in")
+
+```
+
