@@ -1,0 +1,459 @@
+# Load necessary libraries
+library(readr)
+library(tidyr)
+library(ggplot2)
+library(scales)
+library(readxl)
+library(cluster)
+library(factoextra)
+library(tidyverse)
+library(ggmap)
+library(choroplethr)
+library(choroplethrMaps)
+library(acs)
+library(ggrepel)
+library(tigris)
+
+#Functions
+
+convert_dollar_to_int <- function(column) {
+    
+    indices <- grepl("^\\$", column)
+    
+    
+    numeric_values <- rep(NA_real_, length(column))
+    
+    
+    numeric_values[indices] <- as.numeric(gsub("[$,]", "", column[indices]))
+    
+    
+    result <- ifelse(is.na(numeric_values), column, numeric_values)
+    
+    return(result)
+}
+
+# Function to Plot Property Value Trend for a Specific County using qplot
+plot_property_value <- function(data, county_name) {
+    county_data <- data %>%
+        filter(`Geographic name` == county_name) %>%
+        gather(key = "year_range", value = "property_value", 
+               `Estimate2017-2021`, `Estimate2012-2016`, `Estimate2007-2011`)
+    
+    qplot(data = county_data, x = as.factor(year_range), y = property_value, 
+          geom = "line", group = 1, 
+          color = I("green"),  # color of the line
+          size = I(2),         # width of line
+          main = paste("Property Value Trend in", county_name),
+          xlab = "Year Range", ylab = "Property Value") +
+        scale_y_continuous(labels = scales::dollar_format(prefix = "$")) 
+    
+    
+}
+
+# Function to compute means for given columns
+compute_means <- function(df, columns) {
+    sapply(columns, function(col) mean(df[[col]]))
+}
+
+
+
+# Reading DataFrames
+housing_df <- read_csv("Data/MedianCountyValue.csv", show_col_types = FALSE)
+
+income_df <- read_csv("Data/IncomeHousing.csv", show_col_types = FALSE)
+
+Unemployment<-read_xlsx("Data/Unemployment.xlsx")
+
+DemoData<- read_xlsx("Data/Demographic Population.xlsx")
+
+Poverty<- read_xlsx("Data/Poverty.xlsx")
+
+# Checking if there are missing values in the data frame
+
+# Show records with missing values
+records_with_missing_homeval <- housing_df[!complete.cases(housing_df), ]
+records_with_missing_values <- income_df[!complete.cases(income_df), ]
+
+# Filter out rows with missing values 
+income_df <- income_df[complete.cases(income_df$`Measure Values`), ]
+
+#Rename income dataframe county column name 
+income_df <- income_df %>%
+    rename(`Geographic name` = `Geographic Name`)
+
+for (col in names(housing_df)) {
+    if (col != "Geographic name") {
+        housing_df[[col]] <- convert_dollar_to_int(housing_df[[col]])
+    }
+}
+
+#Highest Property Values
+highest_property_counties1 <- housing_df %>%
+    filter(!is.na(`Estimate2017-2021`)) %>%
+    arrange(desc(`Estimate2017-2021`)) %>%
+    head(10)
+
+# Lowest Property Values
+lowest_property_counties1 <- housing_df %>%
+    filter(!is.na(`Estimate2017-2021`)) %>%
+    arrange(`Estimate2017-2021`) %>%
+    head(10)  # Get the top 10 counties with lowest property values
+
+#Highest Property Values
+highest_property_counties2 <- housing_df %>%
+    filter(!is.na(`Estimate2012-2016`)) %>%
+    arrange(desc(`Estimate2012-2016`)) %>%
+    head(10)
+
+# Lowest Property Values
+lowest_property_counties2 <- housing_df %>%
+    filter(!is.na(`Estimate2012-2016`)) %>%
+    arrange(`Estimate2012-2016`) %>%
+    head(10)  # Get the top 10 counties with lowest property values
+
+#Highest Property Values
+highest_property_counties3 <- housing_df %>%
+    filter(!is.na(`Estimate2007-2011`)) %>%
+    arrange(desc(`Estimate2007-2011`)) %>%
+    head(10)
+
+# Lowest Property Values
+lowest_property_counties3 <- housing_df %>%
+    filter(!is.na(`Estimate2007-2011`)) %>%
+    arrange(`Estimate2007-2011`) %>%
+    head(10)  # Get the top 10 counties with lowest property values
+
+# Define the columns of interest
+cols <- c("Estimate2007-2011", "Estimate2012-2016", "Estimate2017-2021")
+
+# Compute means using the function
+highmeans <- compute_means(highest_property_counties3, cols)
+lowmeans <- compute_means(lowest_property_counties3, cols)
+
+# Plot both lines
+plot(highmeans, type = 'l', col = 'red', ylim = range(c(highmeans, lowmeans)), 
+     xaxt = 'n', xlab = 'Time Period', ylab = 'Mean Value', main = 'Mean Value Over Time')
+lines(lowmeans, col = 'blue')
+axis(1, at = 1:3, labels = cols)
+legend("topright", legend = c("High", "Low"), fill = c("red", "blue"), bty = "n")
+
+mygraph = plot(highmeans, type = "b", col = "blue", ylim = c(70000,250000), main = 'Change in Mean Housing Values from 2007-2021', ylab = 'Mean Value') 
+lines(lowmeans, type = "b", col = "red") 
+
+mygraph = mygraph + theme(axis.ticks.x = element_blank())
+
+p <- qplot(data = highest_property_counties1, x = reorder(`Geographic name`, -`Estimate2017-2021`), 
+           y = `Estimate2017-2021`, geom = "col", fill = I("skyblue"),
+           main = "Top 10 Counties with Highest Property Values",
+           xlab = "County", ylab = "Property Value") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    scale_y_continuous(labels = scales::dollar_format(prefix = "$"))
+
+
+
+# Lowest Property Values: Bar Plot with y-axis labels showing numbers with $ sign
+q <- qplot(data = lowest_property_counties1, x = reorder(`Geographic name`, `Estimate2017-2021`), 
+           y = `Estimate2017-2021`, geom = "col", fill = I("salmon"),
+           main = "Top 10 Counties with Lowest Property Values",
+           xlab = "County", ylab = "Property Value") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    scale_y_continuous(labels = scales::dollar_format(prefix = "$"))
+
+
+
+# Replace "Your County Name" with the actual county name you want to plot
+selected_county <- "Dallas County"  #Can give any county name
+
+# Plot Property Value Trend for the Selected County
+property_value_plot <- plot_property_value(housing_df, selected_county)
+
+
+##Change in Mean Income Over Time
+###slide 8
+
+income_df_mean <- rename(income_df, Measure_Values = `Measure Values`)
+
+income_df_mean <- mutate(income_df_mean, Measure_Values = as.numeric(Measure_Values))
+
+meanincome20072011 <- income_df_mean %>%
+    filter(Year == '2007-2011')
+
+mean20072011 <- mean(meanincome20072011$Measure_Values)
+
+
+meanincome20122016 <- income_df_mean %>%
+    filter(Year == '2012-2016')
+
+mean20122016 <- mean(meanincome20122016$Measure_Values)
+
+meanincome20172021 <- income_df_mean %>%
+    filter(Year == '2017-2021')
+
+mean20172021 <- mean(meanincome20172021$Measure_Values)
+
+
+##Change in Mean Income By Race 
+
+###slide 9
+
+income_df_mean_change_race <- income_df_mean %>% 
+    group_by(`Race Origin`, Year) %>%
+    summarize(mean(Measure_Values)
+    ) 
+
+income_df_mean_change_race
+
+# Using Overall Income by county alongside Most Recent 5 year sample
+
+
+MHI_Cleaned <- income_df %>% 
+    filter(`Race Origin` == "Total", `Measure Names` == "Estimate")
+
+recent <- MHI_Cleaned %>% 
+    filter(Year == "2017-2021", `Income Level` == "Median Household Income")
+
+recent$MedianCountyValue <-as.numeric(housing_df$`Estimate2017-2021`)
+
+
+
+#Impact of Income on Household value
+plot1 <- recent %>%
+    ggplot(aes(x = `Measure Values`, y = MedianCountyValue )) +
+    geom_point(alpha = .3) +
+    #add names using ggrepel limiting overlap
+    geom_text_repel(aes(label=recent$`Geographic name`)) +
+    #titles and caption
+    labs(x = "Median Household Income",
+         y = "Median Household Value",
+         title = "Impact of Household Income on Home Value",
+         caption = "Source: Iowa State Data Center") +
+    theme_bw() +
+    theme(
+        plot.title = element_text(size = 14, hjust = 0.5, face = "bold")
+    ) +
+    #make ticks look nice
+    scale_y_continuous(labels = dollar_format(prefix = "$"),breaks = scales::pretty_breaks(n = 10)) +
+    scale_x_continuous(labels = dollar_format(prefix = "$"), breaks = scales::pretty_breaks(n = 10))
+
+
+
+#choropleth
+
+data(county.regions)
+
+cr <- county.regions
+
+cr <- cr %>%
+    filter(state.abb == "IA") %>%
+    select(region, county.name) %>%
+    arrange(county.name)
+
+housing_dfPlot <- housing_df %>% mutate(region = cr$region) %>% 
+    select(`Estimate2017-2021`,region)
+
+
+
+# How have property values changed over time
+
+MHI_Cleaned$Year <- as.factor(MHI_Cleaned$Year)
+
+plot3 <- MHI_Cleaned %>% 
+    filter(`Income Level` == "Median Household Income") %>% 
+    ggplot(aes(x = Year, y = `Measure Values`)) + 
+    geom_boxplot(aes(fill = Year)) + 
+    theme_minimal() + 
+    ggtitle("Recent Growth of Median Household Income") +
+    xlab("Time Period") +
+    ylab("Median Household Income") + 
+    scale_y_continuous(labels = dollar_format(prefix = "$"),breaks = scales::pretty_breaks(n = 5)) + 
+    labs(caption = "Source: Iowa State Data Center")
+
+
+
+#What counties have the highest value
+
+plot4_df <- county.regions %>% 
+    filter(state.name == "iowa") 
+
+plot4_df$value <-  housing_df$`Estimate2017-2021`
+
+
+
+plot4 <- county_choropleth(plot4_df, state_zoom = "iowa") +
+    scale_fill_brewer(palette = "YlOrRd")
+
+
+
+
+
+Unemployment <- Unemployment %>%
+    drop_na() %>%
+    select(-Year, -`Margin of Error`)%>%
+    rename(`Geographic name`=`Geographic Name`)
+
+Poverty <- Poverty %>%
+    rename(
+        PovertyRate = `2017-2021`,
+        `Geographic name` = `Goegraphic Name`) %>%
+    mutate(`Geographic name` = paste0(`Geographic name`, " County"))
+
+
+DemoData <- DemoData %>%
+    rename( `Geographic name` = `Geographic Name`)
+
+Dropped_housing_df <- housing_df %>%
+    select(`Geographic name`, `Estimate2017-2021`) %>%
+    rename(MedianHousingPrice = `Estimate2017-2021`)
+
+Dropped_income_df <- income_df %>%
+    filter(`Race Origin` == "Total",
+           `Income Level` == "Median Household Income",
+           Year == "2017-2021",
+           `Measure Names` == "Estimate") %>%
+    select(`Geographic name`, `Measure Values`) %>%
+    rename(Income = `Measure Values`)
+
+# Joining to one dataframe by county
+
+CountyDF <- Unemployment %>%
+    inner_join(DemoData, by = "Geographic name") %>%
+    inner_join(Poverty, by = "Geographic name") %>%
+    inner_join(Dropped_housing_df, by = "Geographic name")%>%
+    inner_join(Dropped_income_df, by = "Geographic name")
+
+
+data_for_clustering <- CountyDF %>% select(-`Geographic name`) 
+# Scaling as K-means highly infuenced by outliers
+scaled_data <- scale(data_for_clustering)
+
+set.seed(123) 
+wss <- map_dbl(1:10, function(k) {
+    model <- kmeans(scaled_data, centers = k)
+    model$tot.withinss
+})
+
+#Plot to look at where there could be a good number of clusters with valuable info
+
+elbow_plot <- data.frame(
+    k = 1:10,
+    wss = wss
+)
+elbow<-ggplot(elbow_plot, aes(x = k, y = wss)) +
+    geom_line() +
+    geom_point() +
+    ggtitle("Elbow Method") +
+    ylab("Within-cluster Sum of Squares") +
+    xlab("Number of Clusters")
+
+# Determined 5 based off above graph
+
+k_optimal <- 5
+
+set.seed(123)  
+kmeans_result <- kmeans(scaled_data, centers = k_optimal)
+
+
+CountyDF$cluster <- kmeans_result$cluster
+
+## Looking at summaries of each cluster
+
+summary_table <- CountyDF %>%
+    select(-`Geographic name`) %>%
+    group_by(cluster) %>%
+    summarise_all(mean, na.rm = TRUE) %>%
+    mutate(
+        `Unemployment rate` = percent(`Unemployment rate` / 100, accuracy = 0.01),
+        Population = as.integer(Population),
+        across(4:10, ~percent(.x, accuracy = 0.01)),
+        PovertyRate = percent(PovertyRate / 100, accuracy = 0.01),
+        MedianHousingPrice = dollar(MedianHousingPrice, accuracy = 1),
+        Income = dollar(Income, accuracy = 1)
+    ) %>%
+    left_join(CountyDF %>% group_by(cluster) %>% summarise(NumObservations = n()), by = "cluster")
+#Loading Iowa Data and joining to built dataframe
+
+iowa_shape <- counties(state = "IA")
+
+iowacountydata <- left_join(iowa_shape, CountyDF, by = c("NAMELSAD" = "Geographic name"))
+
+#Defining Color Palette for our clusters that went from 6 to 5
+
+color_palette <- c("blue", "red", "green", "yellow", "purple", "orange")
+
+ggplot(data = iowacountydata) + 
+    geom_sf(aes(fill = as.factor(cluster)), color = "white") +
+    scale_fill_manual(values = color_palette) +
+    theme_minimal() +
+    labs(fill = "cluster", title = "Cluster Assignments by County") +
+    theme(legend.position = "right")
+
+cluster_plot <- ggplot(data = iowacountydata) + 
+    geom_sf(aes(fill = as.factor(cluster)), color = "white") +
+    scale_fill_manual(values = c("blue", "red", "green", "yellow", "purple", "orange")) +
+    theme_minimal() +
+    labs(fill = "Cluster", title = "Cluster Assignments by County") +
+    theme(legend.position = "right")
+
+# Merge based on 'Geographic Name' column
+merged_data <- merge(housing_df, income_df, by.x = "Geographic name", by.y = "Geographic name")
+
+# Filter out rows where Income Level is Per Capita Income
+filtered_data_sc <- merged_data[merged_data$`Income Level` != "Per Capita Income", ]
+
+# Visualization: Scatter plot with facets based on Income Level
+plot <- qplot(data = filtered_data_sc, x = `Measure Values`, y = `Estimate2017-2021`, geom = "point", color = `Income Level`, facets = . ~ `Income Level`) +
+    labs(title = "Median Income vs. Median Housing Value", x = "Median Income", y = "Housing Value") +
+    scale_y_continuous(labels = scales::dollar_format(prefix = "$")) +
+    scale_x_continuous(labels = scales::dollar_format(prefix = "$")) +
+    theme(axis.text = element_text(size = 6)) +
+    theme(axis.text = element_text(color = "black"))
+
+# Set the height and width for the saved graph
+ggsave("output_plot_q4_facets.png", plot, width = 10, height = 6, dpi = 600, units = "in")
+
+# Filter out rows where Race Origin is "Total"
+filtered_data <- merged_data[merged_data$`Race Origin` != "Total", ]
+
+# Create a horizontal violin plot using qplot
+
+plot2 <- qplot(data = filtered_data, x = `Estimate2017-2021`, y = `Race Origin`, fill = `Race Origin`,
+              geom = "violin", main = "Effect of Racial Makeup on Median Housing Value for 2017 - 2021",
+              ylab = "Race", xlab = "Median Housing Value") +
+    scale_fill_discrete(name = "Race") +
+    scale_x_continuous(labels = scales::dollar_format(prefix = "$")) +  # Format X-axis as currency
+    theme_minimal() +
+    theme(axis.text.y = element_text(angle = 0, hjust = 1, size = 8),
+          axis.text.x = element_text(angle = 0, hjust = 1, size = 8),  # Adjust y-axis 
+          axis.title.x = element_text(color = "white"),  # Set x-axis title color to black
+          axis.title.y = element_text(color = "white"),  # Set y-axis title color to black
+          axis.text = element_text(color = "white"),     # Set axis text color to black
+          legend.text = element_text(color = "white"),
+          legend.title = element_text(color = "white"),
+          panel.background = element_rect(fill = "lightblue"),  # Set background color
+          plot.title = element_text(color = "white", size = 14, face = "bold"))  # Set title color and size) 
+
+
+
+
+
+# Saving Plots
+
+ggsave(filename = "Media/outputQ1A.png", plot = p)
+ggsave(filename = "Media/outputQ1B.png", plot = q)
+ggsave(filename = "Media/plot1.png", plot = plot1)
+ggsave(filename = "Media/plot3.png", plot = plot3)
+ggsave(filename = "Media/plot4.png", plot = plot4)
+
+ggplot(elbow_plot, aes(x = k, y = wss)) +
+    geom_line() +
+    geom_point() +
+    ggtitle("Elbow Method") +
+    ylab("Within-cluster Sum of Squares") +
+    xlab("Number of Clusters")
+
+
+ggsave(filename = "Media/Cluster Map.png", plot = cluster_plot, width = 10, height = 6, dpi = 300)
+ggsave("Media/output_plot_q4_facets.png", plot, width = 10, height = 6, dpi = 600, units = "in")
+# Set the height and width for the saved graph
+ggsave("Media/output_plot_q5.png", plot2, width = 10, height = 6, dpi = 600, units = "in")
+ggsave("Media/elbowplot.png", elbow, width = 10, height = 6, dpi = 600, units = "in")
